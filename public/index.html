@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GateRelay — never walk to the gate alone</title>
+  <meta name="description" content="Peer-to-peer campus pickup relay. Match your parcel or food pickup to someone who's already walking to the gate." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="hero">
+    <div class="hero-inner">
+      <div>
+        <h1 class="wordmark">GATE<span class="accent">RELAY</span></h1>
+        <p class="tagline">Someone's already walking to the gate. Let them grab your parcel on the way.</p>
+      </div>
+      <div class="gate-clock" aria-hidden="true">
+        <span class="gate-clock-label">GATE TIME</span>
+        <span class="gate-clock-value" id="gate-clock-value">--:--:--</span>
+      </div>
+    </div>
+  </div>
+  <div class="tear-strip" aria-hidden="true"></div>
+
+  <main class="layout">
+    <section class="rail">
+      <div class="panel" id="identity-card">
+        <span class="panel-eyebrow">Counter 00 — Check-in</span>
+        <h2 class="panel-title">You</h2>
+        <div id="identity-setup">
+          <p class="panel-sub">Register once — no password, just your name and ID.</p>
+          <label class="field"><span>Name</span><input id="my-name" type="text" placeholder="Priya Sharma" autocomplete="name" /></label>
+          <label class="field"><span>College ID</span><input id="my-collegeid" type="text" placeholder="21BCS045" autocomplete="off" /></label>
+          <button class="btn btn-primary" id="register-btn">Check in</button>
+        </div>
+        <div id="identity-info" hidden>
+          <div class="identity-row">
+            <p class="me-name" id="me-name"></p>
+            <div class="rep-badge">
+              <span class="rep-label">TRUST</span>
+              <span class="rep-value flip-value" id="rep-value">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="trip-card" hidden>
+        <span class="panel-eyebrow">Counter 01 — Departures</span>
+        <h2 class="panel-title">Heading to the gate?</h2>
+        <p class="panel-sub">Post your window — matching requests get assigned to you automatically.</p>
+        <label class="field"><span>Direction</span>
+          <select id="trip-direction">
+            <option value="toGate">Going to gate</option>
+            <option value="fromGate">Coming from gate</option>
+          </select>
+        </label>
+        <div class="field-row">
+          <label class="field"><span>Leaving in <small>(min)</small></span><input class="mono-input" id="trip-start" type="number" min="0" value="0" inputmode="numeric" /></label>
+          <label class="field"><span>Back by <small>(min)</small></span><input class="mono-input" id="trip-end" type="number" min="1" value="30" inputmode="numeric" /></label>
+        </div>
+        <label class="field"><span>Capacity <small>(items you can carry)</small></span><input class="mono-input" id="trip-capacity" type="number" min="1" value="2" inputmode="numeric" /></label>
+        <button class="btn btn-primary" id="post-trip">Post trip</button>
+      </div>
+
+      <div class="panel" id="request-card" hidden>
+        <span class="panel-eyebrow">Counter 02 — Requests</span>
+        <h2 class="panel-title">Need something picked up?</h2>
+        <label class="field"><span>What is it</span><input id="req-desc" type="text" placeholder="Amazon parcel — Flat 3B" /></label>
+        <div class="field-row">
+          <label class="field"><span>Type</span>
+            <select id="req-type"><option value="parcel">Parcel</option><option value="food">Food</option></select>
+          </label>
+          <label class="field"><span>Value</span>
+            <select id="req-value"><option value="low">Low value</option><option value="high">High value</option></select>
+          </label>
+        </div>
+        <div class="field-row">
+          <label class="field"><span>Need it from <small>(min)</small></span><input class="mono-input" id="req-start" type="number" min="0" value="0" inputmode="numeric" /></label>
+          <label class="field"><span>Until <small>(min)</small></span><input class="mono-input" id="req-end" type="number" min="1" value="20" inputmode="numeric" /></label>
+        </div>
+        <button class="btn btn-primary" id="post-request">Post request</button>
+      </div>
+    </section>
+
+    <section class="main-col">
+      <div class="panel board-panel" id="board-card" hidden>
+        <div class="board-head">
+          <div>
+            <span class="panel-eyebrow">Terminal display</span>
+            <h2 class="panel-title">Live gate board</h2>
+          </div>
+          <span class="board-live" id="board-live"><span class="board-live-dot"></span>live</span>
+        </div>
+        <div class="board-tabs" role="tablist">
+          <button class="board-tab active" data-tab="trips" role="tab" aria-selected="true">Open trips</button>
+          <button class="board-tab" data-tab="requests" role="tab" aria-selected="false">Pending requests</button>
+        </div>
+        <div class="flap-board" id="board-trips"></div>
+        <div class="flap-board" id="board-requests" hidden></div>
+      </div>
+
+      <div class="panel" id="passes-card" hidden>
+        <span class="panel-eyebrow">In your pocket</span>
+        <h2 class="panel-title">Your handoffs</h2>
+        <p class="panel-sub">Things you've asked to be picked up.</p>
+        <div id="passes-list"></div>
+      </div>
+
+      <div class="panel" id="trips-card" hidden>
+        <span class="panel-eyebrow">Dispatch log</span>
+        <h2 class="panel-title">Your trips</h2>
+        <p class="panel-sub">Trips you've posted — close one early if your plans change.</p>
+        <div id="trips-list"></div>
+      </div>
+
+      <div class="panel" id="carrying-card" hidden>
+        <span class="panel-eyebrow">On your way</span>
+        <h2 class="panel-title">You're carrying</h2>
+        <p class="panel-sub">Requests matched to your posted trips.</p>
+        <div id="carrying-list"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>GateRelay — a peer-to-peer campus pickup relay. Zero tracking, zero ads, one gate.</p>
+  </footer>
+
+  <!-- Code-entry modal (boarding-pass styled), replaces window.prompt() -->
+  <div class="modal-backdrop" id="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-stub">
+        <span class="modal-stub-label" id="modal-label">CODE</span>
+      </div>
+      <div class="modal-body">
+        <h3 id="modal-title">Enter code</h3>
+        <p class="modal-sub" id="modal-sub"></p>
+        <input id="modal-code-input" class="code-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="0000" />
+        <p class="modal-error" id="modal-error" hidden></p>
+        <div class="modal-actions">
+          <button class="btn-small ghost" id="modal-cancel" type="button">Cancel</button>
+          <button class="btn btn-primary" id="modal-confirm" type="button">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
