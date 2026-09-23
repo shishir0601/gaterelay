@@ -1,0 +1,647 @@
+/*
+  Design direction: a "transit manifest" aesthetic — departure boards, luggage tags,
+  shipping labels — rather than a generic gradient/glassmorphism SaaS template. One accent
+  color, used sparingly and consistently. Monospace reserved for data that benefits from
+  fixed-width alignment (times, OTP codes, IDs, scores) so it reads as information, not
+  decoration. No shadows-as-depth, no glowing cards, no hero section with more visual noise
+  than content.
+*/
+
+:root {
+  --bg: #faf8f3;
+  --surface: #ffffff;
+  --surface-sunken: #f2efe6;
+  --border: #e2dccc;
+  --border-strong: #c9c1ac;
+
+  --text: #221f1a;
+  --text-muted: #7a7263;
+  --text-faint: #a89f8c;
+
+  --accent: #b8541f;
+  --accent-hover: #983f13;
+  --accent-soft: #f4e3d3;
+
+  --success: #3f6b4f;
+  --success-soft: #e3ede6;
+  --danger: #a13d3d;
+  --danger-soft: #f3e1e1;
+  --warning: #93650f;
+  --warning-soft: #f6ecd6;
+
+  --radius: 6px;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Layout --- */
+
+.page {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-brand {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+
+.sidebar-brand .dot {
+  color: var(--accent);
+}
+
+.sidebar-tagline {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  margin-bottom: 28px;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+/* Resets <button>-specific browser defaults (border, background, font, cursor) so the
+   sign-out button — deliberately styled as a .nav-link so it behaves correctly in the
+   mobile icon row too, see Shell.jsx — looks identical to the <NavLink>-rendered <a>
+   elements next to it, rather than looking like a stray form control. */
+.nav-link-signout {
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.nav-link:hover {
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+
+.nav-link.active {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.sidebar-footer {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  margin-top: 14px;
+}
+
+.main-content {
+  flex: 1;
+  padding: 32px 40px;
+  max-width: 1080px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.page-title {
+  font-size: 1.5rem;
+}
+
+.page-subtitle {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
+/* --- Cards --- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.card + .card {
+  margin-top: 12px;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+/* --- Buttons --- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn-secondary {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+.btn-danger-text {
+  background: transparent;
+  color: var(--danger);
+  padding: 6px 8px;
+  font-size: 0.8rem;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+/* --- Forms --- */
+
+.field {
+  margin-bottom: 16px;
+}
+
+.field label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.field-hint {
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  margin-top: 5px;
+}
+
+.field-error {
+  font-size: 0.78rem;
+  color: var(--danger);
+  margin-top: 5px;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="datetime-local"],
+select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* --- Status badges --- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid transparent;
+}
+
+.badge-active,
+.badge-open {
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
+}
+
+.badge-matched,
+.badge-pending {
+  background: var(--warning-soft);
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 30%, transparent);
+}
+
+.badge-completed {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  border-color: var(--border-strong);
+}
+
+/* --- Alerts / messages --- */
+
+.alert {
+  padding: 11px 14px;
+  border-radius: var(--radius);
+  font-size: 0.86rem;
+  border: 1px solid transparent;
+  margin-bottom: 16px;
+}
+
+.alert-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+}
+
+.alert-success {
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 25%, transparent);
+}
+
+/* --- Empty state --- */
+
+.empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--text-faint);
+}
+
+.empty-state-title {
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+/* --- Loading --- */
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-sunken) 25%, var(--border) 50%, var(--surface-sunken) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius);
+  height: 68px;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* --- Auth page --- */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  padding: 20px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+}
+
+.auth-brand {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.auth-brand-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.auth-brand-title .dot {
+  color: var(--accent);
+}
+
+.auth-brand-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.auth-toggle {
+  display: flex;
+  gap: 4px;
+  background: var(--surface-sunken);
+  border-radius: var(--radius);
+  padding: 3px;
+  margin-bottom: 22px;
+}
+
+.auth-toggle button {
+  flex: 1;
+  padding: 7px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.auth-toggle button.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* --- Match card --- */
+
+.match-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.match-score {
+  font-family: var(--font-mono);
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.match-score-label {
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.match-card-actions {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.match-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.match-reason-tag {
+  font-size: 0.74rem;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.route-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.route-arrow {
+  color: var(--text-faint);
+}
+
+/* --- Handoff timeline --- */
+
+.handoff-steps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 20px 0 28px;
+}
+
+.handoff-step {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.handoff-step.done {
+  background: var(--success);
+}
+
+.handoff-step.current {
+  background: var(--accent);
+}
+
+.otp-code {
+  font-family: var(--font-mono);
+  font-size: 2.4rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  text-align: center;
+  padding: 18px;
+  background: var(--accent-soft);
+  border-radius: var(--radius);
+  margin: 16px 0;
+}
+
+.otp-input {
+  font-family: var(--font-mono);
+  font-size: 1.4rem;
+  letter-spacing: 0.2em;
+  text-align: center;
+}
+
+/* --- Responsive --- */
+
+@media (max-width: 760px) {
+  .app-shell {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    padding: 12px 16px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-brand,
+  .sidebar-tagline,
+  .sidebar-footer {
+    display: none;
+  }
+
+  .sidebar nav {
+    flex-direction: row;
+    flex: 1;
+    justify-content: space-around;
+  }
+
+  .nav-link span {
+    display: none;
+  }
+
+  /* A real mobile bug found during review: .match-card's side-by-side layout (route info
+     on the left, score + Accept button on the right, neither designed to shrink) was never
+     given a mobile override at all -- on a narrow phone screen the non-shrinking right
+     column (score number, "compatible" label, Accept button) crowds the left column's
+     route/reason-tag content instead of the two stacking cleanly. */
+  .match-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .match-card-actions {
+    text-align: left;
+  }
+
+  .main-content {
+    padding: 20px;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}

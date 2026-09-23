@@ -1,119 +1,203 @@
-# GateRelay
+# Gaterelay
 
-Peer-to-peer campus pickup relay. If your hostel is far from the gate, GateRelay matches your parcel/food pickup requests to someone who's already walking there — instead of everyone making the trip separately.
+Students already traveling somewhere often have spare room to carry something for someone
+else on the same route. Gaterelay connects **travelers** (posting a trip, with spare
+capacity) with **requesters** (posting a pickup, needing something moved) — matches them
+with a deterministic, rule-based algorithm, and confirms the physical handoff with a
+one-time code.
 
-**Zero runtime dependencies.** Pure Node.js backend (hand-rolled routing, sessions, and rate limiting on top of `http` — no framework), vanilla JS frontend.
+This is a deliberately small, fully-understood full-stack project — every architectural
+decision below has a stated reason, and nothing in it is AI-generated matching or fake
+statistics. It's built to be explained end-to-end in an interview, not just demoed.
 
-## Run it
+## Core flow
 
-```bash
-npm start
-# → http://localhost:3000
+```
+Register/Login → Post a Trip OR Request a Pickup → Deterministic Matching
+→ Accept a Match → OTP Handoff → Complete
 ```
 
-## Run the tests
+## Key features
 
-```bash
-npm test    # 29 tests: matching algorithm + rate limiter + full API integration
-```
+- **Deterministic matching** — exact location match, time-window overlap, and capacity
+  are hard requirements; a 0–100 compatibility score and plain-language reasons ("Same
+  origin", "Excellent time overlap") explain *why* a match makes sense. No AI, no fuzzy
+  matching — the whole algorithm is in one file (`backend/matching.py`) with no database
+  access at all, so it's trivially testable and inspectable.
+- **Server-side-enforced state machine** — a match can't be accepted twice, an inactive
+  trip can't be matched, a completed handoff can't be re-verified. Every one of these is
+  checked in the backend, never just in the UI.
+- **OTP handoff** — the traveler generates a 6-digit code (hashed, never stored in
+  plaintext, 10-minute expiry, 5-attempt lockout) and shows it to the requester in person;
+  the requester enters it to confirm the handoff and complete the trip/request.
+- **Real authentication** — bcrypt password hashing, JWTs, and ownership checks on every
+  protected resource; the backend never trusts a user id supplied by the frontend.
 
-## The problem this solves
+## Tech stack
 
-Everyone in a hostel/wing walking to a far gate separately, just to collect their own parcel or food order, is wasted trips. Someone is usually headed there anyway. GateRelay matches "I'm going to the gate between X and Y" against "I need something picked up between A and B."
+**Backend:** Python, FastAPI, SQLAlchemy, SQLite, Pydantic, JWT (python-jose), bcrypt
+(passlib), pytest.
+**Frontend:** React, Vite, plain CSS (a small custom design system, no UI framework),
+react-router, lucide-react for icons.
 
-## The matching algorithm
-
-This is the core of the project — [`lib/match.js`](lib/match.js), fully unit-tested, with zero dependency on the HTTP layer or the database.
-
-1. **Interval overlap.** A request can only be assigned to a trip if their time windows actually overlap — no point matching a carrier leaving now to a request that needs pickup in 3 hours.
-2. **Earliest Deadline First (EDF).** When a trip has more eligible requests than capacity, the most time-pressured requests (soonest deadline) are prioritized. This is the same greedy used in real-time scheduling theory, and it's provably optimal for maximizing requests served under a shared capacity constraint.
-3. **Reputation-gated capacity.** Carriers with reputation below 50 are capped at carrying 1 item regardless of stated capacity — a new or previously-unreliable carrier shouldn't be handed a stack of parcels.
-4. **Value-gated matching.** High-value items only match to carriers with reputation ≥ 80.
-
-Matching runs both ways and stays consistent either way round ([`src/services/matching-service.js`](src/services/matching-service.js)):
-- Posting a **trip** pulls in every eligible *pending* request, EDF-ordered, up to capacity.
-- Posting a **request** offers it to every open trip (soonest-departing first) and takes the first one with room.
-
-A trip can be **closed** early (it stops accepting new matches, but doesn't touch requests already assigned to it) and a still-**pending** request can be **cancelled** — both were missing early on and are genuinely needed once you've actually posted something you want to take back.
-
-## Trust and security design
-
-Peer-to-peer handoff has real failure modes — the design accounts for them instead of ignoring them:
-
-- **Sessions, not trusted client input.** Checking in (`POST /api/members`) issues a bearer token. Every other route (except the health check) requires it, and the acting member is *always* read from the verified session — never from a client-supplied `carrierId`/`requesterId` in the request body. Earlier versions of this API trusted the body for that, which meant anyone could impersonate any member; that's fixed now.
-- **Per-request authorization**, not just authentication. Only the trip's own carrier can close it or confirm a pickup; only a request's own requester can cancel it, confirm delivery, or report a no-show. These are checked against the session, server-side, on every call.
-- **Codes are scoped to their owner.** `GET /api/requests` used to return every pending handoff's pickup/delivery codes to any caller. It now redacts them (`null`) for everyone except the request's own requester — see [`src/serializers.js`](src/serializers.js).
-- **OTP-style handoff codes.** Every matched request gets a 4-digit pickup code and a separate 4-digit delivery code, exchanged in person. The carrier must be shown the pickup code to confirm they're handing off the right item to the right person; the requester must be shown the delivery code to confirm they're receiving it, not a stranger.
-- **Reputation with real consequences**, not just a cosmetic star rating — it directly caps how much a low-trust carrier can take on, and gates who's allowed to carry high-value items.
-- **No-show reporting** docks reputation immediately (−20), and disputes that get upheld dock further (−30). Reputation is clamped 0–150 and floors don't let a bad actor recover instantly.
-- **Rate limiting** on the routes that create new board entries (`POST /api/members|trips|requests`), so one script can't flood the board — see [`lib/rate-limiter.js`](lib/rate-limiter.js), a pure fixed-window limiter, unit-tested on its own.
-
-**Known limitation:** sessions don't expire — there's no TTL or refresh flow. That's a deliberate scope cut for a single-server student project (see Roadmap), not an oversight.
-
-## API
-
-Every route except the two marked *public* requires `Authorization: Bearer <sessionToken>`.
-
-| Method | Route | Purpose |
-|---|---|---|
-| `POST` | `/api/members` | Check in (idempotent by college ID) — *public*, issues a session token |
-| `GET` | `/api/members/:id` | Get a member's current profile + reputation |
-| `POST` | `/api/trips` | Post a carrier trip (carrier = the caller) — triggers matching |
-| `GET` | `/api/trips` | List trips |
-| `POST` | `/api/trips/:id/close` | Carrier closes their own trip early |
-| `POST` | `/api/requests` | Post a pickup request (requester = the caller) — triggers matching |
-| `GET` | `/api/requests` | List requests (codes redacted unless you're the requester) |
-| `POST` | `/api/requests/:id/cancel` | Requester cancels their own still-pending request |
-| `POST` | `/api/requests/:id/confirm-pickup` | Assigned carrier confirms with the pickup code |
-| `POST` | `/api/requests/:id/confirm-delivery` | Requester confirms with the delivery code — reputation increases |
-| `POST` | `/api/requests/:id/report-no-show` | Requester flags a no-show — reputation decreases |
-| `GET` | `/api/health` | Liveness check — *public*, no session needed |
+Nothing fancier than that on purpose — no Docker, no message queue, no WebSockets, no AI.
+See "Design decisions" below for why SQLite specifically.
 
 ## Architecture
 
 ```
-server.js                     entrypoint — port + graceful shutdown only; requires src/http/server
-src/
-  http/
-    server.js                creates the http.Server: loads the DB, resolves the session, dispatches, logs
-    session.js                bearer-token session creation + lookup
-    body-parser.js             JSON body reading with a size cap
-    rate-limit.js              HTTP-facing wrapper around lib/rate-limiter.js
-    logger.js                  one-line request logging
-    static-files.js            serves public/, with path-traversal protection
-  router.js                    route table (method + regex -> controller), auth-gated by default
-  controllers/                 members.js, trips.js, requests.js, health.js — one file per resource
-  services/
-    matching-service.js        wires the pure lib/match.js engine to live DB state
-    codes.js                   4-digit handoff code generation
-  validation.js                shared field validators (length caps, timestamp parsing, window checks)
-  serializers.js                response shaping, incl. per-viewer code redaction
-lib/
-  match.js                    matching algorithm + reputation logic — pure, fully tested
-  store.js                    JSON-file persistence (atomic writes)
-  rate-limiter.js              pure fixed-window rate limiter — fully tested
-public/                        vanilla JS frontend — departure-terminal / boarding-pass design system
-test/                          29 tests: algorithm + rate limiter (pure) + full API integration
+frontend/          React + Vite SPA
+  src/
+    pages/          AuthPage, Dashboard, PostTrip, RequestPickup, Matches, Handoff
+    components/     Shell (sidebar layout), StatusBadge
+    lib/             api.js (fetch wrapper), auth.jsx (auth context), format.js
+
+backend/
+  main.py            FastAPI app assembly, CORS, error handling
+  database.py         SQLAlchemy engine/session
+  models.py            4 tables: User, Trip, Request, Handoff
+  schemas.py            Pydantic request/response models
+  auth.py                 password hashing, JWT, get_current_user dependency
+  matching.py              the deterministic matching engine (pure functions, no DB)
+  routes/
+    auth.py, trips.py, requests.py, matches.py, handoffs.py
+  tests/               73 pytest tests
 ```
 
-`server.js` stays at the repo root and re-exports the `http.Server` built in `src/http/server.js` unchanged, so `npm start` and `require("../server")` in tests didn't need to change when the internals were split apart.
+No repository pattern, no service layer, no dependency-injection framework beyond
+FastAPI's own `Depends()`. A route function does validation (via the Pydantic schema),
+an ownership check, a database operation, and returns — that's the whole pattern,
+everywhere.
 
-## Design notes
+## Database
 
-- All matching and reputation logic lives in pure, dependency-free functions (`matchTrip`, `isEligible`, `effectiveCapacity`, `applyReputationEvent`) so it's trivial to unit test without spinning up the server. The rate limiter follows the same pattern.
-- `lib/store.js` writes atomically (temp file + rename) so a crash mid-write can never corrupt `data.json`. Sessions live in that same file, so a server restart doesn't silently sign everyone out.
-- The whole DB is loaded once per request (not once per auth-check *and* once per handler) and threaded through — see `handleApi` in `src/http/server.js`.
-- The frontend polls every 4 seconds rather than using WebSockets — a deliberate simplicity trade-off for a student project; swapping in WebSocket push notifications is a natural next step.
-- The UI leans hard into the product's own metaphor: a near-black departure-terminal environment (hairline dividers, amber signage text, monospace digits everywhere a number lives) with warm cream boarding-pass stubs — the things you'd actually hold — sitting on top of it. The "Live gate board" is a real split-flap board: each row is individually-animated character tiles that only flip the characters that actually changed on each poll, cascading left to right like a real airport board. Buttons disable themselves mid-request to prevent double-submits, a lost session drops you back to check-in with an explanation instead of silently failing, and everything respects `prefers-reduced-motion`.
+Four tables, on purpose:
 
-## Roadmap
+- **User** — id, name, email (unique), password_hash, created_at
+- **Trip** — id, user_id (FK), origin, destination, departure_time, available_capacity,
+  status (`ACTIVE → MATCHED → COMPLETED`), created_at
+- **Request** — id, user_id (FK), pickup_location, delivery_location, earliest_time,
+  latest_time, item_size (1/2/3 = Small/Medium/Large), status (`OPEN → MATCHED →
+  COMPLETED`), created_at
+- **Handoff** — id, trip_id (FK), request_id (FK), otp_hash, otp_expires_at, otp_attempts,
+  status (`PENDING → COMPLETED`), created_at, completed_at
 
-- [ ] Session expiry + refresh flow
-- [ ] Push notifications instead of polling
-- [ ] Photo-at-handoff as an optional extra layer of proof
-- [ ] Admin dispute review queue
-- [ ] Multi-hostel / multi-gate support
+Real foreign keys throughout (`ON DELETE CASCADE`), a unique index on
+`handoffs.request_id` (the actual database-level guarantee that a request can't have two
+accepted matches — not just an application-level check), and a composite index on
+`(status, departure_time)` / `(status, earliest_time, latest_time)` since every matching
+query filters on exactly those columns together.
 
-## License
+**Matches are computed, not stored.** There's no `Match` table — a match is a live
+comparison between an open request and an active trip, always recalculated from current
+data. A `match_id` returned by `GET /matches/{request_id}` is just an encoded
+`"{trip_id}:{request_id}"` pair, and it is **never trusted as-is**: accepting a match
+re-validates every compatibility rule against the database's current state before doing
+anything, so a match that went stale between being listed and being accepted (the trip
+got taken, the request got cancelled) is correctly rejected rather than silently honored.
 
-MIT
+## The matching algorithm
+
+All in `backend/matching.py`, pure functions, no side effects:
+
+1. **Location** — normalized (trimmed, case-insensitive) exact match: trip origin must
+   equal request pickup location, trip destination must equal request delivery location.
+2. **Time** — the trip's departure time must fall within `[earliest_time, latest_time]`.
+3. **Capacity** — the trip's available capacity must be ≥ the request's item size.
+4. **Status** — trip must be `ACTIVE`, request must be `OPEN`.
+
+All four are hard requirements — a pair that fails any of them isn't a match at all, not
+a low-scoring one. For pairs that pass, the score is:
+
+- Same origin: **+40**, same destination: **+40** (effectively constant, since location
+  compatibility is a hard requirement — every returned match already has both)
+- Time score: **0–20**, based on how centered the trip's departure time is within the
+  request's acceptable window. A trip departing near the middle of the window has more
+  real-world buffer on both sides than one departing right at an edge — this is what
+  actually differentiates one match from another.
+
+This is a deliberately simple, fully rule-based model — the UI never implies it's AI, and
+every score can be hand-verified from the three numbers that produced it.
+
+## OTP handoff workflow
+
+```
+Match accepted → Handoff created (PENDING)
+  → Traveler generates a 6-digit code (SHA-256 hashed, 10-min expiry)
+  → Traveler shows the code to the requester in person
+  → Requester enters the code
+  → Correct code: Handoff → COMPLETED, Trip → COMPLETED, Request → COMPLETED
+```
+
+Handled: wrong code (attempt counter increments, 400), expired code (400), 5 wrong
+attempts locks further guessing until the traveler regenerates (which resets the
+counter), verifying a handoff that's already complete (409), and generating/verifying by
+the wrong party (403 — only the traveler generates, only the requester verifies).
+
+**Why SHA-256 for the OTP code but bcrypt for passwords?** A password needs to resist
+offline brute-forcing indefinitely, so bcrypt's deliberate slowness is the point. A
+6-digit code already has only 1,000,000 possibilities, expires in 10 minutes, and is
+capped at 5 guesses — bcrypt's slowness would only add latency here, not real protection.
+Using the same tool for both would be applying it without asking whether it fits.
+
+## Design decisions worth explaining
+
+- **SQLite, not Postgres.** Zero setup, the whole database is one inspectable file, and —
+  worth knowing — SQLite serializes writers at the file level, so a `check-then-write`
+  sequence like accepting a match is safe from races inside one `db.commit()` without
+  needing explicit row locking the way a multi-writer database would.
+- **One caught bug, fixed at the source, not patched around.** SQLite doesn't reliably
+  preserve timezone info through a round-trip the way Postgres does — a value just written
+  and a value freshly queried back can end up one timezone-aware, one not, and Python
+  refuses to compare them. This crashed OTP verification with a 500 the first time the
+  full flow was actually run end-to-end. Fixed by adopting one consistent rule (`naive
+  UTC everywhere`, see `models.to_naive_utc`) applied at every point a datetime enters the
+  system, not by special-casing the one comparison that happened to crash first.
+- **No separate `Match` table.** A match is a computed view over live trip/request data,
+  not an entity with its own lifecycle — see "Database" above.
+- **Matches are requester-initiated.** The traveler doesn't separately "approve" a match;
+  the requester picks which compatible trip to go with, and accepting it is final for
+  both sides. Simpler state machine, matches the given flow exactly.
+
+## Known limitations
+
+- No path to free up a trip/request whose handoff was accepted but never completed
+  (no "cancel handoff" action) — out of scope for this pass, and the spec's own endpoint
+  list doesn't include one.
+- JWTs are long-lived (7 days) with no refresh/rotation — a deliberate scope cut for a
+  project this size, not an oversight.
+- The default JWT secret in `auth.py` is a hardcoded dev value, overridable via
+  `JWT_SECRET_KEY` — fine for local use, must be set for anything beyond that.
+
+## Setup
+
+### Prerequisites
+- Python 3.10+
+- Node.js 18+
+
+### Backend
+```bash
+cd backend
+python3 -m venv venv
+./venv/bin/pip install -r requirements.txt
+cp .env.example .env          # optional — sensible defaults work without it
+./venv/bin/uvicorn main:app --reload --port 8000
+```
+API docs (auto-generated by FastAPI): http://localhost:8000/docs
+
+### Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open http://localhost:5173 — the dev server proxies `/api/*` to the backend on :8000.
+
+### Tests
+```bash
+cd backend
+./venv/bin/pytest tests/ -v
+```
+73 tests: authentication, trip/request CRUD and ownership, the matching engine in
+isolation (no DB), match acceptance and its state-transition guards, and the full OTP
+handoff lifecycle including expiry and the attempt lockout.
